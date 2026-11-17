@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "axisbox"
+version = "1.0.0"
+name = "AXISBOX"
+tagline = "Резка персонажей и соединение ключами / штифтами — русский UI"
+maintainer = "AXISBOX"
+type = "add-on"
+
+tags = ["Mesh", "Modeling", "3D Printing"]
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
