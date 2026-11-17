@@ -314,3 +314,223 @@ def delete_object_and_data(obj: bpy.types.Object | None) -> None:
     if data is not None and getattr(data, "users", 1) == 0:
         if isinstance(data, bpy.types.Mesh):
             bpy.data.meshes.remove(data)
+
+
+def newell_normal(points: list[Vector]) -> Vector:
+    """Polygon normal via Newell's method."""
+    n = Vector((0.0, 0.0, 0.0))
+    count = len(points)
+    if count < 3:
+        return Vector((0.0, 0.0, 1.0))
+    for i in range(count):
+        a = points[i]
+        b = points[(i + 1) % count]
+        n.x += (a.y - b.y) * (a.z + b.z)
+        n.y += (a.z - b.z) * (a.x + b.x)
+        n.z += (a.x - b.x) * (a.y + b.y)
+    if n.length < 1e-12:
+        # Fallback from first triangle.
+        n = (points[1] - points[0]).cross(points[2] - points[0])
+    if n.length < 1e-12:
+        return Vector((0.0, 0.0, 1.0))
+    return n.normalized()
+
+
+def close_polyline(points: list[Vector], eps: float = 1e-5) -> list[Vector]:
+    """Return open ring (no duplicate last) suitable for a closed polygon."""
+    if len(points) < 3:
+        return list(points)
+    pts = [p.copy() for p in points]
+    if (pts[0] - pts[-1]).length <= eps:
+        pts = pts[:-1]
+    return pts
+
+
+def create_halfspace_prism(
+    points_world: list[Vector],
+    normal: Vector,
+    extent_positive: float,
+    extent_negative: float = 0.05,
+    name: str = "CC_tmp_halfspace",
+) -> bpy.types.Object | None:
+    """
+    Build a localized prism from a closed polyline.
+    Occupies the polygon extruded along ±normal — used as Boolean half-space
+    so only geometry inside the path band is separated (not an infinite plane).
+    """
+    poly = close_polyline(points_world)
+    if len(poly) < 3:
+        return None
+    normal = normal.normalized()
+    if normal.length < 1e-8:
+        return None
+
+    bottom = [p - normal * extent_negative for p in poly]
+    top = [p + normal * extent_positive for p in poly]
+    n = len(poly)
+
+    mesh = bpy.data.meshes.new(name)
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+
+    verts = [v.to_tuple() for v in bottom] + [v.to_tuple() for v in top]
+    faces: list[tuple[int, ...]] = []
+    # Bottom (reversed winding for outward normal roughly -N)
+    faces.append(tuple(range(n - 1, -1, -1)))
+    # Top
+    faces.append(tuple(range(n, 2 * n)))
+    # Sides
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, j + n, i + n))
+
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    # Triangulate for more reliable booleans.
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    obj["character_cut_role"] = "HALFSPACE"
+    return obj
+
+
+def create_path_guide_object(
+    points_world: list[Vector],
+    name: str,
+    closed: bool = True,
+) -> bpy.types.Object:
+    """Visible editable polyline/polygon guide stored as a mesh."""
+    poly = close_polyline(points_world)
+    mesh = bpy.data.meshes.new(name)
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+
+    if len(poly) < 2:
+        mesh.from_pydata([p.to_tuple() for p in poly], [], [])
+    else:
+        edges = [(i, i + 1) for i in range(len(poly) - 1)]
+        faces: list[tuple[int, ...]] = []
+        if closed and len(poly) >= 3:
+            edges.append((len(poly) - 1, 0))
+            faces.append(tuple(range(len(poly))))
+        mesh.from_pydata([p.to_tuple() for p in poly], edges, faces)
+        if faces:
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bmesh.ops.triangulate(bm, faces=bm.faces[:])
+            bm.to_mesh(mesh)
+            bm.free()
+    mesh.update()
+    obj.display_type = "WIRE"
+    obj.show_in_front = True
+    obj.hide_render = True
+    obj["character_cut_role"] = "PATH"
+    obj["character_cut_closed"] = closed
+    return obj
+
+
+def path_points_from_object(obj: bpy.types.Object) -> list[Vector]:
+    if obj is None or obj.type != "MESH":
+        return []
+    return [obj.matrix_world @ v.co for v in obj.data.vertices]
+
+
+def split_mesh_by_path_loop(
+    source: bpy.types.Object,
+    points_world: list[Vector],
+    name_pos: str,
+    name_neg: str,
+    extent_positive: float | None = None,
+    extent_negative: float = 0.05,
+    extrude_normal: Vector | None = None,
+) -> tuple[bpy.types.Object | None, bpy.types.Object | None, Vector, Vector, str]:
+    """
+    Split source with a localized half-space built from a closed surface path.
+
+    The prism only spans the polyline footprint (e.g. around an arm), so a waist
+    path will not slice a hanging limb elsewhere — unlike an infinite plane.
+
+    ``extrude_normal`` (connector +Z) points toward the side kept in INTERSECT
+    (positive / pin-side volume). Point it along the limb distal direction.
+    Returns (part_positive, part_negative, center, normal, error).
+    """
+    poly = close_polyline(points_world)
+    if len(poly) < 3:
+        return None, None, Vector(), Vector(), "Нужен замкнутый путь (≥3 точки)."
+
+    plane_n = newell_normal(poly)
+    center = sum((p for p in poly), Vector()) / len(poly)
+
+    if extrude_normal is not None and extrude_normal.length > 1e-8:
+        normal = extrude_normal.normalized()
+        # Keep extrusion roughly aligned with the path plane; if nearly parallel
+        # to the polygon, fall back to Newell so the prism still has volume.
+        if abs(normal.dot(plane_n)) < 0.25:
+            normal = plane_n
+    else:
+        normal = plane_n
+
+    mn, mx = object_bbox_world(source)
+    diag = (mx - mn).length
+    if extent_positive is None:
+        extent_positive = max(diag * 0.75, 1.0)
+
+    half = create_halfspace_prism(
+        poly,
+        normal,
+        extent_positive=extent_positive,
+        extent_negative=extent_negative,
+        name="CC_tmp_path_halfspace",
+    )
+    if half is None:
+        return None, None, center, normal, "Не удалось построить поверхность реза."
+
+    part_pos = duplicate_object(source, name_pos)
+    part_neg = duplicate_object(source, name_neg)
+
+    ok_pos = apply_boolean(part_pos, half, "INTERSECT")
+    ok_neg = apply_boolean(part_neg, half, "DIFFERENCE")
+    delete_object_and_data(half)
+
+    if not ok_pos or not ok_neg:
+        delete_object_and_data(part_pos)
+        delete_object_and_data(part_neg)
+        return (
+            None,
+            None,
+            center,
+            normal,
+            "Boolean по кривому резу не удался. Уточните путь или геометрию.",
+        )
+
+    # Empty-result guard.
+    if len(part_pos.data.polygons) == 0 or len(part_neg.data.polygons) == 0:
+        delete_object_and_data(part_pos)
+        delete_object_and_data(part_neg)
+        return (
+            None,
+            None,
+            center,
+            normal,
+            "Кривой рез дал пустую деталь — путь не пересекает нужную область.",
+        )
+
+    return part_pos, part_neg, center, normal, ""
+
+
+def path_intersects_object(points_world: list[Vector], obj: bpy.types.Object, pad: float = 0.01) -> bool:
+    """Cheap bbox overlap test between path points and object."""
+    if not points_world:
+        return False
+    mn, mx = object_bbox_world(obj)
+    mn = mn - Vector((pad, pad, pad))
+    mx = mx + Vector((pad, pad, pad))
+    for p in points_world:
+        if mn.x <= p.x <= mx.x and mn.y <= p.y <= mx.y and mn.z <= p.z <= mx.z:
+            return True
+    # Also: path centroid inside expanded bbox
+    c = sum((p for p in points_world), Vector()) / len(points_world)
+    return mn.x <= c.x <= mx.x and mn.y <= c.y <= mx.y and mn.z <= c.z <= mx.z

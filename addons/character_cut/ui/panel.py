@@ -68,10 +68,18 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
         if settings.mode == "DRAFT":
             col = box.column(align=True)
             col.operator("character_cut.add_straight_cut", icon="MESH_PLANE")
+            row = col.row(align=True)
+            row.scale_y = 1.25
+            row.operator("character_cut.draw_curved_cut", text="Кривой рез (нарисовать)", icon="CURVE_BEZCURVE")
             col.operator("character_cut.place_cut_from_view", icon="VIEW3D")
 
+            box.label(
+                text="Кривой рез: петля вокруг руки/ноги — без среза всего тела",
+                icon="INFO",
+            )
+
             # Character presets with icons
-            box.label(text="Быстрые резы персонажа", icon="ARMATURE_DATA")
+            box.label(text="Плоскости-пресеты (осторожно с висящими руками)", icon="ARMATURE_DATA")
             grid = box.grid_flow(columns=3, align=True, even_columns=True)
             op = grid.operator("character_cut.add_character_preset", text="Голова", icon="USER")
             op.preset = "HEAD"
@@ -95,7 +103,9 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
                 icon = "CHECKBOX_HLT" if item.enabled else "CHECKBOX_DEHLT"
                 tog = row.operator("character_cut.toggle_draft", text="", icon=icon)
                 tog.index = i
-                sel = row.operator("character_cut.select_draft_plane", text=item.name, icon="MESH_PLANE")
+                type_icon = "CURVE_BEZCURVE" if item.cut_type == "CURVED" else "MESH_PLANE"
+                label = f"{'⌁ ' if item.cut_type == 'CURVED' else ''}{item.name}"
+                sel = row.operator("character_cut.select_draft_plane", text=label, icon=type_icon)
                 sel.index = i
                 rem = row.operator("character_cut.remove_draft", text="", icon="X")
                 rem.index = i
@@ -105,11 +115,14 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
                     sub = box.box()
                     sub.label(text=f"Настройки: {item.name}", icon="SETTINGS")
                     sub.prop(item, "enabled", icon="HIDE_OFF")
+                    sub.label(text=f"Тип: {'кривой путь' if item.cut_type == 'CURVED' else 'прямая плоскость'}")
                     sub.prop(item, "shape")
                     sub.prop(item, "radius_mm")
                     sub.prop(item, "depth_mm")
                     sub.prop(item, "clearance_mm")
                     sub.prop(item, "pin_on_positive")
+                    if item.cut_type == "CURVED":
+                        sub.prop(item, "band_extent")
 
             row = box.row(align=True)
             row.operator("character_cut.clear_drafts", icon="TRASH")
@@ -119,11 +132,19 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
 
         else:
             col = box.column(align=True)
-            col.label(text="Подсказка: выберите плоскость CC или рез через центр", icon="QUESTION")
+            col.label(text="Быстрый режим: плоскость или нарисованный путь", icon="QUESTION")
             col.operator("character_cut.add_straight_cut", text="Плоскость для быстрого реза", icon="MESH_PLANE")
+            row = col.row(align=True)
+            row.scale_y = 1.25
+            op = row.operator(
+                "character_cut.draw_curved_cut",
+                text="Нарисовать рез + собрать",
+                icon="CURVE_BEZCURVE",
+            )
+            op.easy_build = True
             row = box.row()
             row.scale_y = 1.4
-            row.operator("character_cut.easy_cut", icon="PLAY")
+            row.operator("character_cut.easy_cut", text="Плоскость → детали", icon="PLAY")
 
         # --- Export ---
         box = layout.box()
@@ -143,7 +164,8 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
         col.label(text="• Только закрытые manifold-сетки", icon="MESH_ICOSPHERE")
         col.label(text="• Сцена в мм, Apply Scale/Rotation", icon="DRIVER_DISTANCE")
         col.label(text="• Зазор калибруйте тестовой печатью", icon="MOD_SOLIDIFY")
-        col.label(text="• Кривой рез — в следующих версиях", icon="CURVE_BEZCURVE")
+        col.label(text="• Кривой рез: замкните петлю вокруг детали", icon="CURVE_BEZCURVE")
+        col.label(text="• ЛКМ точка · Backspace · C замкнуть · Enter ОК", icon="DOT")
 
 
 CLASSES = (CHARACTER_CUT_PT_main,)

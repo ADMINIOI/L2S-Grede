@@ -17,12 +17,28 @@ from bpy.props import (
 class CharacterCutDraftItem(bpy.types.PropertyGroup):
     name: StringProperty(name="Имя", default="Разрез")
     enabled: BoolProperty(name="Включён", default=True)
+    cut_type: EnumProperty(
+        name="Тип реза",
+        items=(
+            ("STRAIGHT", "Прямой", "Бесконечная плоскость"),
+            ("CURVED", "Кривой", "Локальный путь по поверхности"),
+        ),
+        default="STRAIGHT",
+    )
     plane_object: PointerProperty(name="Плоскость", type=bpy.types.Object)
+    path_object: PointerProperty(name="Путь", type=bpy.types.Object)
     connector_object: PointerProperty(name="Коннектор", type=bpy.types.Object)
     pin_on_positive: BoolProperty(
         name="Штифт на + стороне",
-        description="Если включено — штифт на стороне нормали плоскости",
+        description="Если включено — штифт на стороне нормали плоскости/пути",
         default=True,
+    )
+    band_extent: FloatProperty(
+        name="Глубина пояса реза",
+        description="Насколько далеко вытянуть локальный объём реза вдоль нормали пути",
+        default=0.0,
+        min=0.0,
+        soft_max=500.0,
     )
     shape: EnumProperty(
         name="Форма",

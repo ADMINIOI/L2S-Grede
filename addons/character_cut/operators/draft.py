@@ -69,7 +69,9 @@ def _add_draft_item(
     item = settings.draft_cuts.add()
     item.name = name
     item.enabled = True
+    item.cut_type = "STRAIGHT"
     item.plane_object = plane
+    item.path_object = None
     item.connector_object = connector
     item.shape = settings.shape
     item.radius_mm = settings.radius_mm
@@ -81,6 +83,53 @@ def _add_draft_item(
     bpy.ops.object.select_all(action="DESELECT")
     plane.select_set(True)
     context.view_layer.objects.active = plane
+
+
+def add_curved_draft_item(
+    context,
+    name: str,
+    points: list,
+    closed: bool = True,
+) -> None:
+    """Register a curved/polyline draft cut from world-space points."""
+    settings = context.scene.character_cut
+    draft_col = utils.ensure_collection(utils.DRAFT_COLLECTION)
+
+    poly = utils.close_polyline([Vector(p) for p in points])
+    normal = utils.newell_normal(poly)
+    center = sum((p for p in poly), Vector()) / max(len(poly), 1)
+
+    path = utils.create_path_guide_object(
+        poly,
+        name=f"{utils.CUT_PREFIX}_{name}",
+        closed=closed,
+    )
+    # Reddish wire look
+    path.color = (1.0, 0.2, 0.15, 1.0)
+    connector = _make_connector_empty(f"{utils.CONNECTOR_PREFIX}_{name}", center, normal)
+    utils.link_only(path, draft_col)
+    utils.link_only(connector, draft_col)
+    connector.parent = path
+    connector.matrix_parent_inverse = path.matrix_world.inverted()
+
+    item = settings.draft_cuts.add()
+    item.name = name
+    item.enabled = True
+    item.cut_type = "CURVED"
+    item.plane_object = None
+    item.path_object = path
+    item.connector_object = connector
+    item.shape = settings.shape
+    item.radius_mm = settings.radius_mm
+    item.depth_mm = settings.depth_mm
+    item.clearance_mm = settings.clearance_mm
+    item.pin_on_positive = settings.pin_on_positive
+    item.band_extent = 0.0
+    settings.active_draft_index = len(settings.draft_cuts) - 1
+
+    bpy.ops.object.select_all(action="DESELECT")
+    path.select_set(True)
+    context.view_layer.objects.active = path
 
 
 class CHARACTER_CUT_OT_add_straight_cut(bpy.types.Operator):
@@ -173,10 +222,9 @@ class CHARACTER_CUT_OT_toggle_draft(bpy.types.Operator):
             return {"CANCELLED"}
         item = settings.draft_cuts[self.index]
         item.enabled = not item.enabled
-        if item.plane_object:
-            item.plane_object.hide_viewport = not item.enabled
-        if item.connector_object:
-            item.connector_object.hide_viewport = not item.enabled
+        for obj in (item.plane_object, item.path_object, item.connector_object):
+            if obj:
+                obj.hide_viewport = not item.enabled
         return {"FINISHED"}
 
 
@@ -193,6 +241,7 @@ class CHARACTER_CUT_OT_remove_draft(bpy.types.Operator):
             return {"CANCELLED"}
         item = settings.draft_cuts[self.index]
         utils.delete_object_and_data(item.plane_object)
+        utils.delete_object_and_data(item.path_object)
         utils.delete_object_and_data(item.connector_object)
         settings.draft_cuts.remove(self.index)
         settings.active_draft_index = max(0, min(settings.active_draft_index, len(settings.draft_cuts) - 1))
@@ -210,6 +259,7 @@ class CHARACTER_CUT_OT_clear_drafts(bpy.types.Operator):
         while len(settings.draft_cuts):
             item = settings.draft_cuts[0]
             utils.delete_object_and_data(item.plane_object)
+            utils.delete_object_and_data(item.path_object)
             utils.delete_object_and_data(item.connector_object)
             settings.draft_cuts.remove(0)
         settings.last_status = "Черновик очищен"
@@ -218,7 +268,7 @@ class CHARACTER_CUT_OT_clear_drafts(bpy.types.Operator):
 
 class CHARACTER_CUT_OT_select_draft_plane(bpy.types.Operator):
     bl_idname = "character_cut.select_draft_plane"
-    bl_label = "Выбрать плоскость"
+    bl_label = "Выбрать рез"
     bl_options = {"REGISTER"}
 
     index: bpy.props.IntProperty(default=0)
@@ -227,13 +277,14 @@ class CHARACTER_CUT_OT_select_draft_plane(bpy.types.Operator):
         settings = context.scene.character_cut
         if self.index < 0 or self.index >= len(settings.draft_cuts):
             return {"CANCELLED"}
-        plane = settings.draft_cuts[self.index].plane_object
-        if plane is None:
-            self.report({"ERROR"}, "Плоскость отсутствует")
+        item = settings.draft_cuts[self.index]
+        target = item.path_object if item.cut_type == "CURVED" else item.plane_object
+        if target is None:
+            self.report({"ERROR"}, "Объект реза отсутствует")
             return {"CANCELLED"}
         bpy.ops.object.select_all(action="DESELECT")
-        plane.select_set(True)
-        context.view_layer.objects.active = plane
+        target.select_set(True)
+        context.view_layer.objects.active = target
         settings.active_draft_index = self.index
         return {"FINISHED"}
 

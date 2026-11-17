@@ -9,7 +9,7 @@ Character Cut — аддон Blender для разрезания персона�
 bl_info = {
     "name": "Character Cut (Рез персонажа)",
     "author": "L2S-Grede / Cursor Agent",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Рез персонажа",
     "description": (

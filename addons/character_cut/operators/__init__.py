@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from . import prepare, draft, cut, export_ops
+from . import prepare, draft, cut, draw_cut, export_ops
 
-MODULES = (prepare, draft, cut, export_ops)
+MODULES = (prepare, draft, cut, draw_cut, export_ops)
 
 
 def register():
