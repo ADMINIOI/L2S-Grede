@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "dovetail_key_ru"
+version = "5.3.0"
+name = "Dovetail Key RU (Шпонка)"
+tagline = "Резка сеток и соединение шпонками — русский UI и доп. формы ключей"
+maintainer = "RU fork based on Milad Kambari - 3DRedbox Studio"
+type = "add-on"
+
+website = "https://artstation.com/milad_kambari"
+
+tags = ["Mesh", "Modeling"]
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
