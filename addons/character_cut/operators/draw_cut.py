@@ -131,16 +131,29 @@ class CHARACTER_CUT_OT_draw_curved_cut(bpy.types.Operator):
 
     def invoke(self, context, event):
         settings = context.scene.character_cut
-        src = settings.source_object if settings.source_object else utils.active_mesh(context)
+        # CatPin-style: draw immediately on the selected character — no «источник» step.
+        src = utils.target_character(context, prefer_active=True)
         if src is None or src.type != "MESH":
-            self.report({"ERROR"}, "Выберите MESH-модель персонажа")
+            self.report({"ERROR"}, "Выберите персонажа (MESH) в viewport, затем нажмите снова")
             return {"CANCELLED"}
         if context.area is None or context.area.type != "VIEW_3D":
             self.report({"ERROR"}, "Откройте 3D Viewport")
             return {"CANCELLED"}
 
+        ok, msg = utils.mesh_is_manifold(src)
+        if not ok:
+            # Warn only — never block drawing / force a manifold conversion mesh.
+            self.report({"WARNING"}, msg)
+
         self.target = src
-        settings.source_object = src
+        utils.remember_character(context, src)
+        # Keep the character active so raycast/viewport feel stays on the model.
+        try:
+            context.view_layer.objects.active = src
+            src.select_set(True)
+        except Exception:
+            pass
+
         self.points: list[Vector] = []
         self.hover: Vector | None = None
         self.hover_normal: Vector | None = None
@@ -154,9 +167,9 @@ class CHARACTER_CUT_OT_draw_curved_cut(bpy.types.Operator):
         )
         wm.modal_handler_add(self)
         context.workspace.status_text_set(
-            "Кривой рез: ЛКМ — точка | Backspace — назад | C — замкнуть | Enter/ПКМ — ОК | Esc — отмена"
+            f"Рез на «{src.name}»: ЛКМ — точка | Backspace | C — замкнуть | Enter/ПКМ — ОК | Esc"
         )
-        settings.last_status = "Рисование реза… кликайте по модели"
+        settings.last_status = f"Рисуйте прямо на «{src.name}»…"
         context.area.tag_redraw()
         return {"RUNNING_MODAL"}
 
@@ -213,16 +226,25 @@ class CHARACTER_CUT_OT_draw_curved_cut(bpy.types.Operator):
             return {"RUNNING_MODAL"}
 
         name = f"Кривой_{len(settings.draft_cuts) + 1}"
+        char = self.target
         draft_ops.add_curved_draft_item(context, name, pts, closed=True)
+        utils.remember_character(context, char)
+        # Reselect character so the next action stays on the live model (not only the path gizmo).
+        try:
+            bpy.ops.object.select_all(action="DESELECT")
+            char.select_set(True)
+            context.view_layer.objects.active = char
+        except Exception:
+            pass
         settings.last_status = (
-            f"Кривой рез «{name}» добавлен. Подправьте точки или соберите детали."
+            f"Кривой рез «{name}» на «{char.name}». Подправьте путь или соберите детали."
         )
 
         if self.easy_build or settings.mode == "EASY":
             bpy.ops.character_cut.build_parts()
 
         self._cleanup(context)
-        self.report({"INFO"}, "Кривой рез сохранён")
+        self.report({"INFO"}, "Кривой рез сохранён — рисовали на персонаже")
         return {"FINISHED"}
 
     def _cleanup(self, context):
@@ -292,9 +314,9 @@ class CHARACTER_CUT_OT_apply_polyline_points(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.character_cut
-        src = settings.source_object if settings.source_object else utils.active_mesh(context)
+        src = utils.target_character(context, prefer_active=True)
         if src is None:
-            self.report({"ERROR"}, "Нет MESH-источника")
+            self.report({"ERROR"}, "Выберите персонажа (MESH)")
             return {"CANCELLED"}
         pts: list[Vector] = []
         for chunk in self.points_csv.split(";"):
@@ -308,11 +330,11 @@ class CHARACTER_CUT_OT_apply_polyline_points(bpy.types.Operator):
             self.report({"ERROR"}, "Мало точек")
             return {"CANCELLED"}
 
-        settings.source_object = src
+        utils.remember_character(context, src)
         draft_ops.add_curved_draft_item(context, self.name, pts, closed=True)
         if self.easy_build or settings.mode == "EASY":
             return bpy.ops.character_cut.build_parts()
-        settings.last_status = f"Кривой рез «{self.name}» добавлен"
+        settings.last_status = f"Кривой рез «{self.name}» на «{src.name}»"
         return {"FINISHED"}
 
 

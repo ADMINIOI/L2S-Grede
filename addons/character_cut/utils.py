@@ -42,6 +42,53 @@ def active_mesh(context) -> bpy.types.Object | None:
     return obj
 
 
+def _is_addon_guide(obj: bpy.types.Object | None) -> bool:
+    if obj is None:
+        return False
+    role = obj.get("character_cut_role")
+    return role in {"PLANE", "PATH", "CONNECTOR", "HALFSPACE"}
+
+
+def target_character(context, prefer_active: bool = True) -> bpy.types.Object | None:
+    """
+    Character mesh for drawing/cutting (CatPin-style).
+
+    - Drawing/straight cut: prefer the live active MESH (not our guide gizmos).
+    - After drawing, guides may be active — then use the silently remembered character.
+    """
+    settings = getattr(context.scene, "character_cut", None)
+    remembered = None
+    if settings is not None and settings.source_object is not None:
+        if settings.source_object.type == "MESH" and not _is_addon_guide(settings.source_object):
+            remembered = settings.source_object
+
+    if prefer_active:
+        obj = active_mesh(context)
+        if obj is not None and not _is_addon_guide(obj):
+            return obj
+        # Selected MESH that isn't a guide (active might be a guide empty/path).
+        for sel in context.selected_objects:
+            if sel.type == "MESH" and not _is_addon_guide(sel):
+                return sel
+
+    if remembered is not None:
+        return remembered
+
+    obj = active_mesh(context)
+    if obj is not None and not _is_addon_guide(obj):
+        return obj
+    return None
+
+
+def remember_character(context, obj: bpy.types.Object | None) -> None:
+    """Silently track the character being edited — no manual «источник» step."""
+    if obj is None or obj.type != "MESH" or _is_addon_guide(obj):
+        return
+    settings = getattr(context.scene, "character_cut", None)
+    if settings is not None:
+        settings.source_object = obj
+
+
 def scene_unit_scale_to_mm(scene: bpy.types.Scene) -> float:
     """Return multiplier that converts Blender length units to millimeters."""
     us = scene.unit_settings

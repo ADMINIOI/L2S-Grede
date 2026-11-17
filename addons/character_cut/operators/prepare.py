@@ -63,9 +63,11 @@ class CHARACTER_CUT_OT_check_manifold(bpy.types.Operator):
 
 
 class CHARACTER_CUT_OT_set_source(bpy.types.Operator):
+    """Kept for compatibility; not shown in the main panel (selection is enough)."""
+
     bl_idname = "character_cut.set_source"
-    bl_label = "Взять как источник"
-    bl_description = "Запомнить активный объект как исходную модель персонажа"
+    bl_label = "Запомнить персонажа"
+    bl_description = "Необязательно: активный MESH запоминается сам при рисовании реза"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -73,10 +75,9 @@ class CHARACTER_CUT_OT_set_source(bpy.types.Operator):
         if obj is None:
             self.report({"ERROR"}, "Выберите MESH-объект")
             return {"CANCELLED"}
-        settings = context.scene.character_cut
-        settings.source_object = obj
-        settings.last_status = f"Источник: {obj.name}"
-        self.report({"INFO"}, f"Источник: {obj.name}")
+        utils.remember_character(context, obj)
+        context.scene.character_cut.last_status = f"Персонаж: {obj.name}"
+        self.report({"INFO"}, f"Персонаж: {obj.name} (обычно не нужно — достаточно выделения)")
         return {"FINISHED"}
 
 

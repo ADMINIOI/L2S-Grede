@@ -124,20 +124,21 @@ class CHARACTER_CUT_OT_easy_cut(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.character_cut
-        src = settings.source_object if settings.source_object else utils.active_mesh(context)
+        # Prefer remembered character if a cut guide is active; else live selection.
+        plane_obj = context.active_object
+        cutting_guide = bool(plane_obj and plane_obj.get("character_cut_role") == "PLANE")
+        src = utils.target_character(context, prefer_active=not cutting_guide)
         if src is None or src.type != "MESH":
-            self.report({"ERROR"}, "Выберите MESH-модель")
+            self.report({"ERROR"}, "Выберите персонажа (MESH)")
             return {"CANCELLED"}
+        utils.remember_character(context, src)
 
         ok, msg = utils.mesh_is_manifold(src)
         if not ok:
-            settings.last_status = msg
-            self.report({"ERROR"}, msg)
-            return {"CANCELLED"}
+            self.report({"WARNING"}, msg)  # warn only — do not force a conversion step
 
         # Prefer active draft plane / CC plane; else cut through bbox center horizontally.
-        plane_obj = context.active_object
-        if plane_obj and plane_obj.get("character_cut_role") == "PLANE":
+        if cutting_guide:
             plane_co, plane_no = _plane_world_frame(plane_obj)
             # Find matching connector among draft items.
             conn_obj = None
@@ -199,10 +200,14 @@ class CHARACTER_CUT_OT_build_parts(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.character_cut
-        src = settings.source_object if settings.source_object else utils.active_mesh(context)
+        # After drawing, a path guide may be active — use remembered character.
+        src = utils.target_character(context, prefer_active=False)
+        if src is None:
+            src = utils.target_character(context, prefer_active=True)
         if src is None or src.type != "MESH":
-            self.report({"ERROR"}, "Не задан исходный MESH")
+            self.report({"ERROR"}, "Выберите персонажа (MESH)")
             return {"CANCELLED"}
+        utils.remember_character(context, src)
 
         enabled = [
             item
@@ -219,9 +224,7 @@ class CHARACTER_CUT_OT_build_parts(bpy.types.Operator):
 
         ok, msg = utils.mesh_is_manifold(src)
         if not ok:
-            settings.last_status = msg
-            self.report({"ERROR"}, msg)
-            return {"CANCELLED"}
+            self.report({"WARNING"}, msg)  # warn only — attempt build anyway
 
         parts_col = utils.ensure_collection(utils.PARTS_COLLECTION)
         # Start with one working piece (duplicate of source).
@@ -338,9 +341,9 @@ class CHARACTER_CUT_OT_place_cut_from_view(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.character_cut
-        src = settings.source_object if settings.source_object else utils.active_mesh(context)
+        src = utils.target_character(context, prefer_active=True)
         if src is None:
-            self.report({"ERROR"}, "Выберите MESH")
+            self.report({"ERROR"}, "Выберите персонажа (MESH)")
             return {"CANCELLED"}
         mn, mx = utils.object_bbox_world(src)
         center = (mn + mx) * 0.5
@@ -354,8 +357,8 @@ class CHARACTER_CUT_OT_place_cut_from_view(bpy.types.Operator):
         from . import draft as draft_ops
 
         draft_ops._add_draft_item(context, f"Вид_{len(settings.draft_cuts)+1}", center, normal, size)
-        settings.source_object = src
-        settings.last_status = "Плоскость из текущего вида"
+        utils.remember_character(context, src)
+        settings.last_status = f"Плоскость из вида на «{src.name}»"
         self.report({"INFO"}, "Плоскость добавлена из вида")
         return {"FINISHED"}
 

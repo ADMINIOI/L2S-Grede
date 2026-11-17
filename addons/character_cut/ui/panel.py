@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""N-panel UI — русский интерфейс с иконками."""
+"""N-panel UI — русский интерфейс с иконками (CatPin-style: сразу на персонаже)."""
 
 from __future__ import annotations
 
@@ -21,65 +21,41 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.scene.character_cut
+        char = utils.target_character(context, prefer_active=True)
 
-        # --- Status ---
+        # --- Hero status: select → draw ---
         box = layout.box()
-        row = box.row(align=True)
-        row.label(text="Статус", icon="INFO")
+        box.label(text="Выберите персонажа → рисуйте рез", icon="USER")
+        if char:
+            box.label(text=f"Персонаж: {char.name}", icon="OUTLINER_OB_MESH")
+        else:
+            box.label(text="Нет выбранного MESH — кликните модель", icon="ERROR")
         if settings.last_status:
             box.label(text=settings.last_status, icon="DOT")
-        else:
-            box.label(text="Выберите модель → подготовка → рез", icon="HAND")
 
-        # --- Prepare ---
+        # --- Cuts first (primary workflow) ---
         box = layout.box()
-        box.label(text="1. Подготовка", icon="TOOL_SETTINGS")
-        col = box.column(align=True)
-        col.operator("character_cut.set_mm_units", icon="DRIVER_DISTANCE")
-        col.operator("character_cut.apply_transforms", icon="OBJECT_ORIGIN")
-        col.operator("character_cut.check_manifold", icon="MESH_DATA")
-        col.operator("character_cut.set_source", icon="USER")
-        if settings.source_object:
-            row = box.row()
-            row.label(text=f"Источник: {settings.source_object.name}", icon="OUTLINER_OB_MESH")
-
-        # --- Mode ---
-        box = layout.box()
-        box.label(text="2. Режим", icon="UV_SYNC_SELECT")
+        box.label(text="1. Рез на персонаже", icon="MOD_EDGESPLIT")
         row = box.row(align=True)
         row.prop(settings, "mode", expand=True)
 
-        # --- Connector defaults ---
-        box = layout.box()
-        box.label(text="3. Коннектор (штифт / гнездо)", icon="MESH_CYLINDER")
-        col = box.column(align=True)
-        col.prop(settings, "shape", text="")
-        col.prop(settings, "radius_mm", icon="MESH_CIRCLE")
-        col.prop(settings, "depth_mm", icon="EMPTY_SINGLE_ARROW")
-        col.prop(settings, "fit_preset", text="Пресет")
-        col.prop(settings, "clearance_mm", icon="MOD_SOLIDIFY")
-        col.prop(settings, "pin_on_positive", icon="ARROW_LEFTRIGHT")
-        col.prop(settings, "keep_original", icon="PINNED")
-
-        # --- Cuts ---
-        box = layout.box()
-        box.label(text="4. Резы", icon="MOD_EDGESPLIT")
-
         if settings.mode == "DRAFT":
             col = box.column(align=True)
-            col.operator("character_cut.add_straight_cut", icon="MESH_PLANE")
             row = col.row(align=True)
-            row.scale_y = 1.25
-            row.operator("character_cut.draw_curved_cut", text="Кривой рез (нарисовать)", icon="CURVE_BEZCURVE")
+            row.scale_y = 1.35
+            row.operator(
+                "character_cut.draw_curved_cut",
+                text="Кривой рез (нарисовать)",
+                icon="CURVE_BEZCURVE",
+            )
+            col.operator("character_cut.add_straight_cut", icon="MESH_PLANE")
             col.operator("character_cut.place_cut_from_view", icon="VIEW3D")
-
             box.label(
-                text="Кривой рез: петля вокруг руки/ноги — без среза всего тела",
+                text="Кликайте точки прямо по модели — без смены сетки",
                 icon="INFO",
             )
 
-            # Character presets with icons
-            box.label(text="Плоскости-пресеты (осторожно с висящими руками)", icon="ARMATURE_DATA")
+            box.label(text="Плоскости-пресеты", icon="ARMATURE_DATA")
             grid = box.grid_flow(columns=3, align=True, even_columns=True)
             op = grid.operator("character_cut.add_character_preset", text="Голова", icon="USER")
             op.preset = "HEAD"
@@ -94,10 +70,9 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
             op = grid.operator("character_cut.add_character_preset", text="Нога П", icon="SORT_DESC")
             op.preset = "LEG_R"
 
-            # Draft list
             box.label(text="Список резов", icon="OUTLINER")
             if not settings.draft_cuts:
-                box.label(text="Пока пусто — добавьте рез", icon="ADD")
+                box.label(text="Пока пусто — нарисуйте рез", icon="ADD")
             for i, item in enumerate(settings.draft_cuts):
                 row = box.row(align=True)
                 icon = "CHECKBOX_HLT" if item.enabled else "CHECKBOX_DEHLT"
@@ -110,12 +85,13 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
                 rem = row.operator("character_cut.remove_draft", text="", icon="X")
                 rem.index = i
 
-                # Per-cut connector overrides when selected
                 if i == settings.active_draft_index:
                     sub = box.box()
                     sub.label(text=f"Настройки: {item.name}", icon="SETTINGS")
                     sub.prop(item, "enabled", icon="HIDE_OFF")
-                    sub.label(text=f"Тип: {'кривой путь' if item.cut_type == 'CURVED' else 'прямая плоскость'}")
+                    sub.label(
+                        text=f"Тип: {'кривой путь' if item.cut_type == 'CURVED' else 'прямая плоскость'}"
+                    )
                     sub.prop(item, "shape")
                     sub.prop(item, "radius_mm")
                     sub.prop(item, "depth_mm")
@@ -132,23 +108,34 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
 
         else:
             col = box.column(align=True)
-            col.label(text="Быстрый режим: плоскость или нарисованный путь", icon="QUESTION")
-            col.operator("character_cut.add_straight_cut", text="Плоскость для быстрого реза", icon="MESH_PLANE")
             row = col.row(align=True)
-            row.scale_y = 1.25
+            row.scale_y = 1.35
             op = row.operator(
                 "character_cut.draw_curved_cut",
                 text="Нарисовать рез + собрать",
                 icon="CURVE_BEZCURVE",
             )
             op.easy_build = True
+            col.operator("character_cut.add_straight_cut", text="Плоскость", icon="MESH_PLANE")
             row = box.row()
-            row.scale_y = 1.4
+            row.scale_y = 1.2
             row.operator("character_cut.easy_cut", text="Плоскость → детали", icon="PLAY")
+
+        # --- Connector ---
+        box = layout.box()
+        box.label(text="2. Коннектор (штифт / гнездо)", icon="MESH_CYLINDER")
+        col = box.column(align=True)
+        col.prop(settings, "shape", text="")
+        col.prop(settings, "radius_mm", icon="MESH_CIRCLE")
+        col.prop(settings, "depth_mm", icon="EMPTY_SINGLE_ARROW")
+        col.prop(settings, "fit_preset", text="Пресет")
+        col.prop(settings, "clearance_mm", icon="MOD_SOLIDIFY")
+        col.prop(settings, "pin_on_positive", icon="ARROW_LEFTRIGHT")
+        col.prop(settings, "keep_original", icon="PINNED")
 
         # --- Export ---
         box = layout.box()
-        box.label(text="5. Экспорт", icon="EXPORT")
+        box.label(text="3. Экспорт", icon="EXPORT")
         col = box.column(align=True)
         col.prop(settings, "export_format", text="")
         col.prop(settings, "export_dir")
@@ -156,16 +143,24 @@ class CHARACTER_CUT_PT_main(bpy.types.Panel):
         row.scale_y = 1.2
         row.operator("character_cut.export_parts", icon="FILE_FOLDER")
 
+        # --- Optional tools (not a gate) ---
+        box = layout.box()
+        box.label(text="Дополнительно (не обязательно)", icon="TOOL_SETTINGS")
+        col = box.column(align=True)
+        col.operator("character_cut.set_mm_units", icon="DRIVER_DISTANCE")
+        col.operator("character_cut.apply_transforms", icon="OBJECT_ORIGIN")
+        col.operator("character_cut.check_manifold", text="Проверить manifold (предупреждение)", icon="MESH_DATA")
+        col.label(text="Рисовать можно без этой проверки", icon="INFO")
+
         # --- Help ---
         box = layout.box()
-        box.label(text="Важно", icon="ERROR")
+        box.label(text="Подсказки", icon="QUESTION")
         col = box.column(align=True)
         col.scale_y = 0.85
-        col.label(text="• Только закрытые manifold-сетки", icon="MESH_ICOSPHERE")
-        col.label(text="• Сцена в мм, Apply Scale/Rotation", icon="DRIVER_DISTANCE")
-        col.label(text="• Зазор калибруйте тестовой печатью", icon="MOD_SOLIDIFY")
-        col.label(text="• Кривой рез: замкните петлю вокруг детали", icon="CURVE_BEZCURVE")
+        col.label(text="• Рисуйте сразу на выбранном персонаже", icon="CURVE_BEZCURVE")
         col.label(text="• ЛКМ точка · Backspace · C замкнуть · Enter ОК", icon="DOT")
+        col.label(text="• Manifold — совет, не блокировка рисования", icon="INFO")
+        col.label(text="• Зазор калибруйте тестовой печатью", icon="MOD_SOLIDIFY")
 
 
 CLASSES = (CHARACTER_CUT_PT_main,)

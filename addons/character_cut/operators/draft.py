@@ -10,10 +10,8 @@ from .. import utils
 
 
 def _source(context) -> bpy.types.Object | None:
-    settings = context.scene.character_cut
-    if settings.source_object and settings.source_object.type == "MESH":
-        return settings.source_object
-    return utils.active_mesh(context)
+    """Live selected character — no «Взять как источник» required."""
+    return utils.target_character(context, prefer_active=True)
 
 
 def _make_plane_guide(name: str, location: Vector, normal: Vector, size: float) -> bpy.types.Object:
@@ -141,12 +139,12 @@ class CHARACTER_CUT_OT_add_straight_cut(bpy.types.Operator):
     def execute(self, context):
         src = _source(context)
         if src is None:
-            self.report({"ERROR"}, "Выберите модель персонажа (MESH)")
+            self.report({"ERROR"}, "Выберите персонажа (MESH) в viewport")
             return {"CANCELLED"}
 
         ok, msg = utils.mesh_is_manifold(src)
         if not ok:
-            self.report({"WARNING"}, msg)
+            self.report({"WARNING"}, msg)  # warn only — drawing/cutting still allowed
 
         mn, mx = utils.object_bbox_world(src)
         center = (mn + mx) * 0.5
@@ -154,8 +152,8 @@ class CHARACTER_CUT_OT_add_straight_cut(bpy.types.Operator):
         # Default: horizontal cut through center (useful for torso / limbs).
         normal = Vector((0, 0, 1))
         _add_draft_item(context, f"Прямой_{len(context.scene.character_cut.draft_cuts)+1}", center, normal, size)
-        context.scene.character_cut.source_object = src
-        context.scene.character_cut.last_status = "Добавлен прямой рез — двигайте/вращайте плоскость"
+        utils.remember_character(context, src)
+        context.scene.character_cut.last_status = f"Прямой рез на «{src.name}» — двигайте плоскость"
         self.report({"INFO"}, "Прямой рез добавлен. Перемещайте плоскость и стрелку коннектора.")
         return {"FINISHED"}
 
@@ -203,8 +201,8 @@ class CHARACTER_CUT_OT_add_character_preset(bpy.types.Operator):
         }
         loc, normal, label = presets[self.preset]
         _add_draft_item(context, label, loc, normal, size)
-        context.scene.character_cut.source_object = src
-        context.scene.character_cut.last_status = f"Пресет: {label}"
+        utils.remember_character(context, src)
+        context.scene.character_cut.last_status = f"Пресет «{label}» на «{src.name}»"
         self.report({"INFO"}, f"Добавлен рез «{label}» — подправьте плоскость под модель")
         return {"FINISHED"}
 

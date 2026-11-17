@@ -9,14 +9,14 @@ Character Cut — аддон Blender для разрезания персона�
 bl_info = {
     "name": "Character Cut (Рез персонажа)",
     "author": "L2S-Grede / Cursor Agent",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Рез персонажа",
     "description": (
         "Разрезание 3D-персонажей на печатные части со штифтом/гнездом. "
         "Режим Черновик и Быстрый рез. Экспорт STL/OBJ/FBX."
     ),
-    "warning": "Нужны закрытые manifold-сетки; сцена в мм",
+    "warning": "Рисуйте сразу на персонаже; manifold — предупреждение при сборке",
     "doc_url": "",
     "category": "Mesh",
 }
