@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import ring_fraction  # noqa: E402
+from render import DIAL, render_dial  # noqa: E402
 from counts import (  # noqa: E402
     CountUnavailable,
     FACEBOOK_SHARE_URL,
@@ -224,6 +225,20 @@ class RingTests(unittest.TestCase):
         self.assertEqual(ring_fraction(8, None), 0.0)
         self.assertEqual(ring_fraction(None, 10), 0.0)
         self.assertEqual(ring_fraction(8, 0), 0.0)
+
+    def test_half_ring_is_cyan_on_the_right(self) -> None:
+        _width, _height, pixels = render_dial("Instagram", "8", "16", 0.5)
+
+        def color(x: int, y: int) -> tuple[int, int, int]:
+            pixel = (y * DIAL + x) * 4
+            return pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]
+
+        right = color(DIAL // 2 + 70, DIAL // 2)
+        left = color(DIAL // 2 - 70, DIAL // 2)
+        self.assertGreater(right[1], 160)
+        self.assertGreater(right[2], 160)
+        self.assertLess(left[1], 90)
+        self.assertEqual(color(DIAL // 2, DIAL // 2), (12, 12, 26))
 
 
 class RedirectServerTests(unittest.TestCase):
