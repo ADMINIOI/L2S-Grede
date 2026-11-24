@@ -15,7 +15,7 @@ py -3 app.py
 
 Or double-click `run.bat`.
 
-The window stays above other windows on a transparent background. Drag a ring to move it. Click a green number, type the follower goal, and press Enter: the peach arc fills toward that goal and the rest of the ring stays dark gray. Right-click to refresh or close. F5 refreshes too, and the window refreshes itself every 3 minutes.
+The window stays above other windows on a transparent background. Each ring shows the network icon, the live count in cyan, and the goal in smaller gray type. Drag a ring to move the window. Click the small goal number, type a new one, and press Enter: the cyan arc fills toward that goal and the rest of the ring stays dark. Right-click to refresh or close. F5 refreshes too, and the window refreshes itself every 3 minutes.
 
 Print the counts without opening a window:
 
