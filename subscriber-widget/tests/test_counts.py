@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import ring_fraction  # noqa: E402
 from counts import (  # noqa: E402
     CountUnavailable,
     FACEBOOK_SHARE_URL,
@@ -213,6 +214,16 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(result.count, 3)
         self.assertEqual(result.handle, "@axisbox.am")
         self.assertIsNone(result.error)
+
+
+class RingTests(unittest.TestCase):
+    def test_fraction_uses_only_a_positive_goal(self) -> None:
+        self.assertEqual(ring_fraction(8, 16), 0.5)
+        self.assertEqual(ring_fraction(20, 10), 1.0)
+        self.assertEqual(ring_fraction(0, 10), 0.0)
+        self.assertEqual(ring_fraction(8, None), 0.0)
+        self.assertEqual(ring_fraction(None, 10), 0.0)
+        self.assertEqual(ring_fraction(8, 0), 0.0)
 
 
 class RedirectServerTests(unittest.TestCase):
